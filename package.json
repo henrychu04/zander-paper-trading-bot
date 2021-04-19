@@ -1,0 +1,20 @@
+{
+  "name": "discord-paper-trading",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "author": "Henry Chu",
+  "license": "ISC",
+  "dependencies": {
+    "discord.js": "^12.5.3",
+    "dotenv": "^8.2.0",
+    "enmap": "^5.8.4",
+    "mongodb": "^3.6.6",
+    "mongoose": "^5.12.3",
+    "node-binance-api": "^0.12.5",
+    "node-fetch": "^2.6.1"
+  }
+}
