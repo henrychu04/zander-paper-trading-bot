@@ -1,0 +1,14 @@
+Things to implement:
+
+- users model, open orders model, historical orders model
+- continuous loop to get the current price of all crypto currencies
+- continuous loop to monitor all open orders so that if there is a 
+    new order that has to be executed, it will execute at the matched price(s)
+
+necessary commands:
+- get the price of a specified crypto
+- new order
+- open orders for specified users
+- historical orders for specified users
+- earnings per users
+- rankings of all users - weekly earnings and total earnings
