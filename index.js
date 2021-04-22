@@ -37,7 +37,7 @@ fs.readdir('./commands/', (err, files) => {
   files.forEach((file) => {
     if (!file.endsWith('.js')) return;
     let props = require(`./commands/${file}`);
-    let commandName = file.split('.')[0];
+    let commandName = file.split('.')[0].toLowerCase();
     client.commands.set(commandName, props);
   });
 });
@@ -46,4 +46,6 @@ client.on('ready', () => {});
 
 client.login(process.env.BOT_TOKEN).then(async () => {
   console.log('Ready!\n');
+  const start = require('./classes/start.js');
+  start();
 });

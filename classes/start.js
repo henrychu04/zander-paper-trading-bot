@@ -1,14 +1,16 @@
-const monitor = require('./monitor.js');
-const webhook = require('../scripts/webhook.js');
+const Monitor = require('./monitor.js');
+const executeOrder = require('./executeOrder.js');
 
 module.exports = async () => {
-  let newMonitor = new monitor();
+  let newMonitor = new Monitor();
 
   console.log('Monitor started ...\n');
 
-  newMonitor.on('newOrder', (user, body) => {
-    if (user.webhook.length != 0) {
-      webhook(user, body);
-    }
+  newMonitor.on('newLimitOrder', (order) => {
+    executeOrder.limitOrder(order);
+  });
+
+  newMonitor.on('newMarketOrder', (order) => {
+    executeOrder.marketOrder(order);
   });
 };
