@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 
 const positionsSchema = mongoose.Schema({
   d_id: String,
+  positionsValue: Number,
   positions: [Object],
 });
 

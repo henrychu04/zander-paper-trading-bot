@@ -1,8 +1,10 @@
 const Binance = require('node-binance-api');
 const Discord = require('discord.js');
+const { v4: uuidv4 } = require('uuid');
 
 const Users = require('../models/users.js');
 const OpenOrders = require('../models/openOrders.js');
+const Positions = require('../models/positions.js');
 
 exports.run = async (client, message, args) => {
   if (args.length == 0) {
@@ -11,33 +13,11 @@ exports.run = async (client, message, args) => {
     return;
   }
 
-  let allUsers = await Users.find({ d_id: message.author.id });
-
-  if (allUsers.length == 0) {
-    const newUser = new Users({
-      d_id: message.author.id,
-      usdAmount: 100000,
-      portfolioValue: 100000,
-    });
-
-    await newUser
-      .save()
-      .then(console.log('New user successfully added'))
-      .catch((err) => {
-        throw new Error(err);
-      });
-
-    allUsers = await Users.find({ d_id: message.author.id });
-  }
-
-  let user = allUsers[0];
+  let user = await initModels(message.author.id);
 
   const binance = new Binance();
 
-  // BTC:buy:$50:market
-  // BtC:buy:50:limit:60000
-
-  let orderObj = await parseInput(binance, message, args);
+  let orderObj = await parseInput(binance, message, args, user);
 
   if (orderObj == null) {
     return;
@@ -47,20 +27,19 @@ exports.run = async (client, message, args) => {
     .setColor('#7756fe')
     .setTitle(`New Order`)
     .addFields(
-      { name: 'Ticker', value: orderObj.ticker },
-      { name: 'Current Price', value: orderObj.crntPrice },
-      { name: 'Order Type', value: orderObj.orderType },
-      { name: 'Market Type', value: orderObj.marketType },
-      { name: 'Volume', value: orderObj.volume },
-      { name: 'USD Amount', value: orderObj.usdAmount },
-      { name: 'Limit Price', value: `${orderObj.limitPrice != '' ? orderObj.limitPrice : 'N/A'}` }
+      { name: 'Ticker', value: orderObj.ticker, inline: true },
+      { name: 'Current Price', value: orderObj.crntPrice, inline: true },
+      { name: 'Order Type', value: orderObj.orderType, inline: true },
+      { name: 'Market Type', value: orderObj.marketType, inline: true },
+      { name: 'Volume', value: orderObj.volume, inline: true },
+      { name: 'USD Amount', value: orderObj.usdAmount, inline: true },
+      { name: 'Limit Price', value: `${orderObj.limitPrice ? orderObj.limitPrice : 'N/A'}`, inline: true }
     );
 
   await message.channel.send(orderEmbed);
   await message.channel.send('```' + `Confirm order: 'y', 'n'` + '```');
 
   let stopped = false;
-  let exit = false;
   let res = false;
 
   const collector = message.channel.createMessageCollector((msg) => msg.author.id == message.author.id, {
@@ -78,7 +57,7 @@ exports.run = async (client, message, args) => {
     }
   }
 
-  if (exit || !res) {
+  if (!res) {
     await message.channel.send('```Command canceled```');
     console.log('Command canceled\n');
     return;
@@ -115,11 +94,16 @@ async function addNewOrder(user, orderObj) {
   }
 }
 
-async function parseInput(binance, message, args) {
+async function parseInput(binance, message, args, user) {
+  let date = new Date();
+
   let orderObj = {
+    orderId: uuidv4(),
+    time: date.getTime(),
     ticker: '',
     orderType: '',
     volume: '',
+    volumeOrder: false,
     marketType: '',
     crntPrice: '',
     usdAmount: '',
@@ -128,8 +112,8 @@ async function parseInput(binance, message, args) {
 
   let splitMessage = args[0].split(':');
 
-  if (splitMessage.length != 5) {
-    message.channel.send('```Incorrect number of order parameters, returning...');
+  if (splitMessage.length != 5 && splitMessage.length != 4) {
+    message.channel.send('```Incorrect number of order parameters, returning...```');
     return null;
   }
 
@@ -147,6 +131,8 @@ async function parseInput(binance, message, args) {
 
     if (!ticker.includes('USDT')) {
       crnt = obj.replace('USDT', '');
+    } else {
+      crnt = obj;
     }
 
     if (crnt.toLowerCase() == ticker) {
@@ -171,11 +157,40 @@ async function parseInput(binance, message, args) {
 
   if (paramVolume.includes('$')) {
     paramVolume = paramVolume.replace('$', '');
-    orderObj.usdAmount = paramVolume.toLocaleString();
-    orderObj.volume = paramVolume / orderObj.crntPrice;
+    orderObj.usdAmount = Number(paramVolume).toFixed(5);
+    orderObj.volume = Number(paramVolume / orderObj.crntPrice).toFixed(5);
   } else {
-    orderObj.volume = paramVolume;
-    orderObj.usdAmount = `$${(paramVolume * orderObj.crntPrice).toLocaleString()}`;
+    orderObj.volumeOrder = true;
+    orderObj.volume = Number(paramVolume).toFixed(5);
+    orderObj.usdAmount = `${Number(paramVolume * orderObj.crntPrice).toFixed(5)}`;
+  }
+
+  let allPositions = await Positions.find({ d_id: user.d_id });
+
+  let existingPosition = false;
+  let newVolume = 0;
+
+  if (allPositions.length != 0) {
+    for (let position of allPositions[0].positions) {
+      if (position.ticker == orderObj.ticker) {
+        existingPosition = true;
+
+        if (position.volume > 0 && orderObj.orderType == 'sell') {
+          newVolume = orderObj.orderType - position.volume;
+        }
+        break;
+      }
+    }
+  }
+
+  if (newVolume < 0) {
+    await message.channel.send('```User does not have enough spot volume to sell```');
+    return null;
+  }
+
+  if (!existingPosition && user.freeUsdAmount < orderObj.usdAmount) {
+    await message.channel.send('```User does not enough free USD to execute order```');
+    return null;
   }
 
   if (isNaN(paramVolume)) {
@@ -198,4 +213,43 @@ async function parseInput(binance, message, args) {
   }
 
   return orderObj;
+}
+
+async function initModels(d_id) {
+  let allHistoricalOrders = await HistoricalOrders.find({ d_id: d_id });
+  let allPositions = await Positions.find({ d_id: d_id });
+  let allUsers = await Users.find({ d_id: d_id });
+
+  if (allHistoricalOrders.length == 0) {
+    const newHistoricalOrders = new HistoricalOrders({
+      d_id: d_id,
+      historicalOrders: [],
+    });
+
+    await newHistoricalOrders.save();
+  }
+
+  if (allPositions.length == 0) {
+    const newPositions = new Positions({
+      d_id: d_id,
+      positionsValue: 0,
+      positions: [],
+    });
+
+    await newPositions.save();
+  }
+
+  if (allUsers.length == 0) {
+    const newUser = new Users({
+      d_id: message.author.id,
+      usdAmount: 100000,
+      portfolioValue: 100000,
+    });
+
+    await newUser.save().then(console.log('New user successfully added'));
+
+    allUsers = await Users.find({ d_id: d_id });
+  }
+
+  return allUsers[0];
 }

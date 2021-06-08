@@ -1,16 +1,18 @@
 const Monitor = require('./monitor.js');
-const executeOrder = require('./executeOrder.js');
+const executeOrder = require('../scripts/executeOrder.js');
 
 module.exports = async () => {
-  let newMonitor = new Monitor();
+  let monitor = new Monitor();
 
   console.log('Monitor started ...\n');
 
-  newMonitor.on('newLimitOrder', (order) => {
-    executeOrder.limitOrder(order);
-  });
+  monitor.on('newOrder', (order, d_id) => {
+    if (order.marketType == 'market') {
+      console.log(`d_id: ${d_id}\nNew Market Order`);
+    } else {
+      console.log(`d_id: ${d_id}\nNew Limit Order`);
+    }
 
-  newMonitor.on('newMarketOrder', (order) => {
-    executeOrder.marketOrder(order);
+    executeOrder(order, d_id);
   });
 };
