@@ -8,6 +8,10 @@ exports.run = async (client, message, args) => {
         color: '#7756fe',
         fields: [
           {
+            name: ';me',
+            value: 'User information',
+          },
+          {
             name: ';neworder',
             value:
               'Submit a new market or limit order\nFormat: ;neworder BTC:buy:$50:market OR ;neworder BTC:buy:1:limit:50000',
