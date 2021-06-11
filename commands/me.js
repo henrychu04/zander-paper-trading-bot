@@ -1,4 +1,4 @@
-const User = require('../models/user');
+const User = require('../models/users');
 
 exports.run = async (client, message, args) => {
   let userArray = await User.find({ d_id: message.author.id });
