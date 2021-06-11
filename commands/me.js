@@ -1,3 +1,5 @@
+const Discord = require('discord.js');
+
 const User = require('../models/users');
 
 exports.run = async (client, message, args) => {
