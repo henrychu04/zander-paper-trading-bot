@@ -1,9 +1,9 @@
 const Binance = require('node-binance-api');
 
-const Users = require('../models/users.js');
-const OpenOrders = require('../models/openOrders.js');
-const HistoricalOrders = require('../models/historicalOrders.js');
-const Positions = require('../models/positions.js');
+const Users = require('../models/users');
+const OpenOrders = require('../models/openOrders');
+const HistoricalOrders = require('../models/historicalOrders');
+const Positions = require('../models/positions');
 
 const marketFee = 0.005;
 const limitFee = 0.003;
@@ -27,18 +27,18 @@ async function update(d_id, order) {
 
   const binance = new Binance();
   let allPrices = await binance.futuresPrices();
-  order.crntPrice = allPrices[order.ticker];
+  order.crntPrice = Number(allPrices[order.ticker]);
 
   if (!order.volumeOrder) {
-    order.volume = order.usdAmount / order.crntPrice;
+    order.volume = Number(order.usdAmount / order.crntPrice);
   } else {
-    order.usdAmount = order.crntPrice * order.volume;
+    order.usdAmount = Number(order.crntPrice * order.volume);
   }
 
   if (order.orderType == 'market') {
-    order.fee = order.usdAmount * marketFee;
+    order.fee = Number(order.usdAmount * marketFee);
   } else {
-    order.fee = order.usdAmount * limitFee;
+    order.fee = Number(order.usdAmount * limitFee);
   }
 
   let date = new Date();
@@ -65,9 +65,9 @@ async function update(d_id, order) {
         await Users.updateOne({ d_id: d_id }, { $inc: { usdAmount: Number(position.usdAmount - order.fee) } });
         await Positions.updateOne({ d_id: d_id }, { $pull: { positions: { 'positions.ticker': order.ticker } } });
       } else {
-        let depositAmount = order.volume * order.crntPrice - order.fee;
+        let depositAmount = Number(order.volume * order.crntPrice - order.fee);
         if (order.orderType == 'buy') depositAmount *= -1;
-        await Users.updateOne({ d_id: d_id }, { $inc: { usdAmount: Number(depositAmount) } });
+        await Users.updateOne({ d_id: d_id }, { $inc: { usdAmount: depositAmount } });
         await Positions.updateOne(
           { d_id: d_id, 'positions.ticker': order.ticker },
           { $set: { 'positions.$.volume': newVolume } }

@@ -12,5 +12,5 @@ exports.run = async (client, message, args) => {
     embed.addFields({ name: ticker, value: allPrices[ticker], inline: true });
   }
 
-  await message.channel.send(embed).then(console.log('All prices embed sent\n'));
+  await message.channel.send(embed).then(console.log(`${message} completed\n`));
 };

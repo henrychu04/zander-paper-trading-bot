@@ -1,5 +1,5 @@
-const Monitor = require('./monitor.js');
-const executeOrder = require('../scripts/executeOrder.js');
+const Monitor = require('./monitor');
+const executeOrder = require('../scripts/executeOrder');
 
 module.exports = async () => {
   let monitor = new Monitor();

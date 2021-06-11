@@ -2,9 +2,9 @@ const events = require('events');
 const Binance = require('node-binance-api');
 const sleep = require('../scripts/sleep.js');
 
-const Users = require('../models/users.js');
-const OpenOrders = require('../models/openOrders.js');
-const Positions = require('../models/positions.js');
+const Users = require('../models/users');
+const OpenOrders = require('../models/openOrders');
+const Positions = require('../models/positions');
 
 const oneMinute = 60000;
 const oneSecond = 1000;
@@ -80,7 +80,7 @@ module.exports = class Monitor extends events {
             if (crnt.d_id == user.d_id) {
               await Users.updateOne(
                 { d_id: user.d_id },
-                { $set: { portfolioValue: (newPositionsAmount += crnt.usdAmount) } }
+                { $set: { portfolioValue: newPositionsAmount + crnt.usdAmount } }
               );
               break;
             }
@@ -90,8 +90,8 @@ module.exports = class Monitor extends events {
         console.log(err);
       }
 
-      await sleep(oneMinute);
-      // await sleep(oneSecond);
+      // await sleep(oneMinute);
+      await sleep(oneSecond);
     }
   };
 };

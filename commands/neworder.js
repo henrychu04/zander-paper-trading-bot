@@ -2,9 +2,10 @@ const Binance = require('node-binance-api');
 const Discord = require('discord.js');
 const { v4: uuidv4 } = require('uuid');
 
-const Users = require('../models/users.js');
-const OpenOrders = require('../models/openOrders.js');
-const Positions = require('../models/positions.js');
+const Users = require('../models/users');
+const OpenOrders = require('../models/openOrders');
+const Positions = require('../models/positions');
+const HistoricalOrders = require('../models/historicalOrders');
 
 exports.run = async (client, message, args) => {
   if (args.length == 0) {
@@ -13,13 +14,18 @@ exports.run = async (client, message, args) => {
     return;
   }
 
-  let user = await initModels(message.author.id);
+  let d_id = message.author.id;
+  let user = await initModels(d_id);
+  let orderObj = null;
 
-  const binance = new Binance();
-
-  let orderObj = await parseInput(binance, message, args, user);
+  try {
+    orderObj = await parseInput(message, args, user);
+  } catch (err) {
+    console.log(err);
+  }
 
   if (orderObj == null) {
+    console.log('Detected incorrect new order format\n');
     return;
   }
 
@@ -67,34 +73,12 @@ exports.run = async (client, message, args) => {
     return;
   }
 
-  await addNewOrder(user, orderObj);
+  await OpenOrders.updateOne({ d_id: user.d_id }, { $push: { openOrders: orderObj } });
 
-  await message.channel.send('```New Order Successfully Submitted```').then(console.log('New order submitted\n'));
+  await message.channel.send('```New Order Successfully Submitted```').then(console.log(`${message} completed\n`));
 };
 
-async function addNewOrder(user, orderObj) {
-  let allOpenOrdersUsers = await OpenOrders.find({ d_id: user.d_id });
-
-  if (allOpenOrdersUsers.length == 0) {
-    const newOpenOrderUser = new OpenOrders({
-      d_id: user.d_id,
-      openOrders: [orderObj],
-    });
-
-    await newOpenOrderUser
-      .save()
-      .then(console.log('New open order user successfully added\n'))
-      .catch((err) => {
-        throw new Error(err);
-      });
-  } else {
-    await OpenOrders.updateOne({ d_id: user.d_id }, { $push: { openOrders: orderObj } })
-      .then(console.log('New open order successfully added\n'))
-      .catch((err) => console.log(err));
-  }
-}
-
-async function parseInput(binance, message, args, user) {
+async function parseInput(message, args, user) {
   let date = new Date();
 
   let orderObj = {
@@ -108,6 +92,7 @@ async function parseInput(binance, message, args, user) {
     crntPrice: '',
     usdAmount: '',
     limitPrice: '',
+    fee: 0,
   };
 
   let splitMessage = args[0].split(':');
@@ -123,6 +108,7 @@ async function parseInput(binance, message, args, user) {
   let marketType = splitMessage[3].toLowerCase();
   let limitPrice = splitMessage[4];
 
+  const binance = new Binance();
   let allPrices = await binance.futuresPrices();
   let exist = false;
 
@@ -155,49 +141,6 @@ async function parseInput(binance, message, args, user) {
     orderObj.orderType = orderType;
   }
 
-  if (paramVolume.includes('$')) {
-    paramVolume = paramVolume.replace('$', '');
-    orderObj.usdAmount = Number(paramVolume).toFixed(5);
-    orderObj.volume = Number(paramVolume / orderObj.crntPrice).toFixed(5);
-  } else {
-    orderObj.volumeOrder = true;
-    orderObj.volume = Number(paramVolume).toFixed(5);
-    orderObj.usdAmount = `${Number(paramVolume * orderObj.crntPrice).toFixed(5)}`;
-  }
-
-  let allPositions = await Positions.find({ d_id: user.d_id });
-
-  let existingPosition = false;
-  let newVolume = 0;
-
-  if (allPositions.length != 0) {
-    for (let position of allPositions[0].positions) {
-      if (position.ticker == orderObj.ticker) {
-        existingPosition = true;
-
-        if (position.volume > 0 && orderObj.orderType == 'sell') {
-          newVolume = orderObj.orderType - position.volume;
-        }
-        break;
-      }
-    }
-  }
-
-  if (newVolume < 0) {
-    await message.channel.send('```User does not have enough spot volume to sell```');
-    return null;
-  }
-
-  if (!existingPosition && user.freeUsdAmount < orderObj.usdAmount) {
-    await message.channel.send('```User does not enough free USD to execute order```');
-    return null;
-  }
-
-  if (isNaN(paramVolume)) {
-    await message.channel.send('```Invalid volume amount```');
-    return null;
-  }
-
   if (marketType != 'market' && marketType != 'limit') {
     await message.channel.send('```Invalid order type```');
     return null;
@@ -212,6 +155,45 @@ async function parseInput(binance, message, args, user) {
     orderObj.limitPrice = limitPrice;
   }
 
+  if (paramVolume.includes('$')) {
+    paramVolume = paramVolume.replace('$', '');
+    orderObj.usdAmount = Number(paramVolume).toFixed(5);
+    orderObj.volume = Number(paramVolume / orderObj.crntPrice).toFixed(5);
+  } else {
+    orderObj.volumeOrder = true;
+    orderObj.volume = Number(paramVolume).toFixed(5);
+    if (orderObj.marketType == 'limit') {
+      orderObj.usdAmount = `${Number(paramVolume * orderObj.limitPrice).toFixed(5)}`;
+    } else {
+      orderObj.usdAmount = `${Number(paramVolume * orderObj.crntPrice).toFixed(5)}`;
+    }
+  }
+
+  let allPositions = await Positions.find({ d_id: user.d_id });
+  let newVolume = 0;
+
+  if (allPositions.length != 0) {
+    for (let position of allPositions[0].positions) {
+      if (position.ticker == orderObj.ticker && position.volume > 0 && orderObj.orderType == 'sell') {
+        newVolume = orderObj.orderType - position.volume;
+        break;
+      }
+    }
+  }
+
+  if (newVolume < 0) {
+    await message.channel.send('```User does not have enough spot volume to sell```');
+    return null;
+  } else if (user.freeUsdAmount < orderObj.usdAmount) {
+    await message.channel.send('```User does not enough free USD to execute order```');
+    return null;
+  }
+
+  if (isNaN(paramVolume)) {
+    await message.channel.send('```Invalid volume amount```');
+    return null;
+  }
+
   return orderObj;
 }
 
@@ -219,6 +201,7 @@ async function initModels(d_id) {
   let allHistoricalOrders = await HistoricalOrders.find({ d_id: d_id });
   let allPositions = await Positions.find({ d_id: d_id });
   let allUsers = await Users.find({ d_id: d_id });
+  let allOpenOrders = await OpenOrders.find({ d_id: user.d_id });
 
   if (allHistoricalOrders.length == 0) {
     const newHistoricalOrders = new HistoricalOrders({
@@ -242,13 +225,23 @@ async function initModels(d_id) {
   if (allUsers.length == 0) {
     const newUser = new Users({
       d_id: message.author.id,
+      username: `${message.author.username}#${message.author.discriminator}`,
       usdAmount: 100000,
       portfolioValue: 100000,
     });
 
-    await newUser.save().then(console.log('New user successfully added'));
+    await newUser.save();
 
     allUsers = await Users.find({ d_id: d_id });
+  }
+
+  if (allOpenOrders.length == 0) {
+    const newOpenOrder = new OpenOrders({
+      d_id: user.d_id,
+      openOrders: [],
+    });
+
+    await newOpenOrder.save();
   }
 
   return allUsers[0];

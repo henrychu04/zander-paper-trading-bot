@@ -42,7 +42,9 @@ fs.readdir('./commands/', (err, files) => {
   });
 });
 
-client.on('ready', () => {});
+client.on('ready', () => {
+  client.user.setActivity(';help for more info');
+});
 
 client.login(process.env.BOT_TOKEN).then(async () => {
   console.log('Ready!\n');

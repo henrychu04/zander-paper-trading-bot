@@ -39,5 +39,5 @@ exports.run = async (client, message, args) => {
     .setTitle(`${ticker} Price`)
     .setDescription(`${ticker} - ${price}`);
 
-  await message.channel.send(embed).then(console.log('Price embed successfully sent\n'));
+  await message.channel.send(embed).then(console.log(`${message} completed\n`));
 };
